@@ -4,6 +4,11 @@ A custom Frappe/HRMS application that adds configurable leave deduction, balance
 
 ---
 
+
+https://github.com/user-attachments/assets/854947fe-1f67-4e7a-bb05-39f195978cce
+
+
+
 ## Features
 
 * **Configurable Deduction Rules:** Set cascading priorities for how a leave type consumes balances from other leave types (e.g., Casual Leave $\rightarrow$ Annual Leave $\rightarrow$ Leave Without Pay).
