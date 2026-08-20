@@ -1,6 +1,16 @@
 import frappe
-from frappe.utils import getdate, add_days
 
+from frappe.utils import (
+    add_days,
+    getdate,
+    flt,
+    cint,
+)
+
+
+# ============================================================
+# HELPERS
+# ============================================================
 
 def get_priority_rows(leave_type):
     return frappe.get_all(
@@ -19,10 +29,7 @@ def get_priority_rows(leave_type):
     )
 
 
-def get_core_leave_details(
-    employee,
-    date,
-):
+def get_core_leave_details(employee, date):
     get_leave_details = frappe.get_attr(
         "hrms.hr.doctype.leave_application.leave_application.get_leave_details"
     )
@@ -43,16 +50,18 @@ def get_leave_type_is_lwp(leave_type):
     )
 
 
-def validate_employee_leave_balance(
+def get_leave_type_balance(
     employee,
     leave_type,
     date,
 ):
-    is_lwp = get_leave_type_is_lwp(
-        leave_type
-    )
+    """
+    Get current available balance for a leave type.
 
-    if is_lwp:
+    LWP always has effectively unlimited balance.
+    """
+
+    if get_leave_type_is_lwp(leave_type):
         return 0
 
     details = get_core_leave_details(
@@ -61,9 +70,7 @@ def validate_employee_leave_balance(
     )
 
     allocations = (
-        details.get(
-            "leave_allocation"
-        )
+        details.get("leave_allocation")
         or {}
     )
 
@@ -72,16 +79,54 @@ def validate_employee_leave_balance(
     )
 
     if not leave_details:
-        frappe.throw(
-            f"{leave_type} has no leave balance for this employee."
-        )
+        return 0
 
-    remaining = float(
-        leave_details.get(
-            "remaining_leaves",
-            0,
-        )
-        or 0
+    return max(
+        0,
+        flt(
+            leave_details.get(
+                "remaining_leaves",
+                0,
+            )
+        ),
+    )
+
+
+def validate_employee_leave_balance(
+    employee,
+    leave_type,
+    date,
+    requested_days=None,
+):
+    """
+    Standard/core validation.
+
+    This is ONLY used when there is NO custom
+    deduction priority configuration.
+
+    Example:
+
+    Annual Balance = 2
+    Requested = 10
+
+    No custom rule
+    -> reject
+
+    With custom rule
+    -> handled by distribution engine
+    """
+
+    is_lwp = get_leave_type_is_lwp(
+        leave_type
+    )
+
+    if is_lwp:
+        return 0
+
+    remaining = get_leave_type_balance(
+        employee=employee,
+        leave_type=leave_type,
+        date=date,
     )
 
     if remaining <= 0:
@@ -89,8 +134,22 @@ def validate_employee_leave_balance(
             f"{leave_type} has no available leave balance."
         )
 
+    if (
+        requested_days is not None
+        and flt(requested_days) > remaining
+    ):
+        frappe.throw(
+            f"Insufficient leave balance for {leave_type}. "
+            f"Available: {remaining}, "
+            f"Requested: {requested_days}."
+        )
+
     return remaining
 
+
+# ============================================================
+# REQUEST DATE BUILDING
+# ============================================================
 
 def build_request_dates(
     from_date,
@@ -103,6 +162,7 @@ def build_request_dates(
     current_date = from_date
 
     while current_date <= to_date:
+
         days = 1.0
 
         if (
@@ -124,20 +184,30 @@ def build_request_dates(
     return request_dates
 
 
-def group_distribution(
-    raw_distribution
-):
+# ============================================================
+# GROUP DISTRIBUTION
+# ============================================================
+
+def group_distribution(raw_distribution):
     distribution = []
 
     for row in raw_distribution:
+
         if not distribution:
+
             distribution.append({
-                "from_date": row["date"],
-                "to_date": row["date"],
+                "from_date":
+                    row["date"],
+
+                "to_date":
+                    row["date"],
+
                 "leave_type":
                     row["leave_type"],
+
                 "days":
                     row["days"],
+
                 "is_paid":
                     row["is_paid"],
             })
@@ -149,29 +219,40 @@ def group_distribution(
         if (
             previous["leave_type"]
             == row["leave_type"]
+
             and previous["is_paid"]
             == row["is_paid"]
+
             and add_days(
                 previous["to_date"],
                 1,
             ) == row["date"]
         ):
             previous["to_date"] = row["date"]
+
             previous["days"] += row["days"]
 
         else:
+
             distribution.append({
-                "from_date": row["date"],
-                "to_date": row["date"],
+                "from_date":
+                    row["date"],
+
+                "to_date":
+                    row["date"],
+
                 "leave_type":
                     row["leave_type"],
+
                 "days":
                     row["days"],
+
                 "is_paid":
                     row["is_paid"],
             })
 
     for row in distribution:
+
         row["from_date"] = (
             row["from_date"].strftime(
                 "%Y-%m-%d"
@@ -187,6 +268,10 @@ def group_distribution(
     return distribution
 
 
+# ============================================================
+# LEAVE DISTRIBUTION
+# ============================================================
+
 @frappe.whitelist()
 def get_leave_distribution(
     employee,
@@ -196,6 +281,7 @@ def get_leave_distribution(
     half_day=0,
     half_day_date=None,
 ):
+
     if not employee:
         frappe.throw(
             "Employee is required."
@@ -216,19 +302,25 @@ def get_leave_distribution(
             "To Date is required."
         )
 
-    from_date = getdate(from_date)
-    to_date = getdate(to_date)
+    from_date = getdate(
+        from_date
+    )
+
+    to_date = getdate(
+        to_date
+    )
 
     if to_date < from_date:
         frappe.throw(
             "To Date cannot be before From Date."
         )
 
-    half_day = frappe.utils.cint(
+    half_day = cint(
         half_day
     )
 
     if half_day:
+
         if not half_day_date:
             frappe.throw(
                 "Half Day Date is required."
@@ -246,18 +338,13 @@ def get_leave_distribution(
             frappe.throw(
                 "Half Day Date must be between From Date and To Date."
             )
+
     else:
         half_day_date = None
 
-    validate_employee_leave_balance(
-        employee=employee,
-        leave_type=leave_type,
-        date=to_date,
-    )
-
-    priority_rows = get_priority_rows(
-        leave_type
-    )
+    # --------------------------------------------------------
+    # BUILD REQUEST DATES
+    # --------------------------------------------------------
 
     request_dates = build_request_dates(
         from_date=from_date,
@@ -266,14 +353,107 @@ def get_leave_distribution(
         half_day_date=half_day_date,
     )
 
+    requested_total = sum(
+        row["days"]
+        for row in request_dates
+    )
+
+    # --------------------------------------------------------
+    # CHECK CUSTOM DEDUCTION RULE
+    # --------------------------------------------------------
+
+    priority_rows = get_priority_rows(
+        leave_type
+    )
+
+    # ========================================================
+    # NO CUSTOM RULE
+    # ========================================================
+
     if not priority_rows:
+
         is_lwp = get_leave_type_is_lwp(
             leave_type
         )
 
+        # ----------------------------------------------------
+        # LWP
+        # ----------------------------------------------------
+
+        if is_lwp:
+
+            raw_distribution = []
+
+            for request in request_dates:
+
+                raw_distribution.append({
+                    "date":
+                        request["date"],
+
+                    "leave_type":
+                        leave_type,
+
+                    "days":
+                        request["days"],
+
+                    "is_paid":
+                        False,
+                })
+
+            distribution = group_distribution(
+                raw_distribution
+            )
+
+            return {
+                "custom_rule": False,
+
+                "distribution":
+                    distribution,
+
+                "total_days":
+                    requested_total,
+            }
+
+        # ----------------------------------------------------
+        # NORMAL LEAVE WITHOUT CUSTOM RULE
+        #
+        # This behaves like core:
+        #
+        # Balance = 2
+        # Request = 10
+        #
+        # -> Reject
+        # ----------------------------------------------------
+
+        remaining = get_leave_type_balance(
+            employee=employee,
+            leave_type=leave_type,
+            date=to_date,
+        )
+
+        if remaining <= 0:
+
+            frappe.throw(
+                f"{leave_type} has no available leave balance."
+            )
+
+        if requested_total > remaining:
+
+            frappe.throw(
+                f"Insufficient leave balance for "
+                f"{leave_type}. "
+                f"Available: {remaining}, "
+                f"Requested: {requested_total}."
+            )
+
+        # ----------------------------------------------------
+        # BALANCE IS ENOUGH
+        # ----------------------------------------------------
+
         raw_distribution = []
 
         for request in request_dates:
+
             raw_distribution.append({
                 "date":
                     request["date"],
@@ -285,7 +465,7 @@ def get_leave_distribution(
                     request["days"],
 
                 "is_paid":
-                    not is_lwp,
+                    True,
             })
 
         distribution = group_distribution(
@@ -294,14 +474,26 @@ def get_leave_distribution(
 
         return {
             "custom_rule": False,
+
             "distribution":
                 distribution,
+
             "total_days":
-                sum(
-                    row["days"]
-                    for row in raw_distribution
-                ),
+                requested_total,
+
+            "balances": {
+                leave_type:
+                    max(
+                        0,
+                        remaining
+                        - requested_total,
+                    )
+            },
         }
+
+    # ========================================================
+    # CUSTOM DEDUCTION RULE
+    # ========================================================
 
     if (
         priority_rows[0]
@@ -311,6 +503,10 @@ def get_leave_distribution(
         frappe.throw(
             f"Sequence 1 must be {leave_type}."
         )
+
+    # --------------------------------------------------------
+    # GET ALL LEAVE BALANCES
+    # --------------------------------------------------------
 
     leave_details = get_core_leave_details(
         employee=employee,
@@ -327,25 +523,39 @@ def get_leave_distribution(
     balances = {}
 
     for row in priority_rows:
+
         deduction_type = (
             row.deduct_from_leave_type
-        )
-
-        details = leave_allocation.get(
-            deduction_type,
-            {},
         )
 
         is_unpaid = bool(
             row.is_unpaid
         )
 
+        # ----------------------------------------------------
+        # UNPAID / LWP
+        # ----------------------------------------------------
+
         if is_unpaid:
+
             balance = 0
+
+        # ----------------------------------------------------
+        # PAID LEAVE
+        # ----------------------------------------------------
+
         else:
+
+            details = (
+                leave_allocation.get(
+                    deduction_type,
+                    {},
+                )
+            )
+
             balance = max(
                 0,
-                float(
+                flt(
                     details.get(
                         "remaining_leaves",
                         0,
@@ -357,16 +567,25 @@ def get_leave_distribution(
         balances[
             deduction_type
         ] = {
-            "balance": balance,
-            "is_unpaid": is_unpaid,
+            "balance":
+                balance,
+
+            "is_unpaid":
+                is_unpaid,
         }
+
+    # ========================================================
+    # DISTRIBUTE DAY BY DAY
+    # ========================================================
 
     raw_distribution = []
 
     for request in request_dates:
+
         remaining = request["days"]
 
         for priority in priority_rows:
+
             deduction_type = (
                 priority.deduct_from_leave_type
             )
@@ -375,9 +594,22 @@ def get_leave_distribution(
                 priority.is_unpaid
             )
 
+            # ------------------------------------------------
+            # LWP
+            #
+            # Unlimited balance.
+            # ------------------------------------------------
+
             if is_unpaid:
+
                 available = remaining
+
+            # ------------------------------------------------
+            # PAID LEAVE
+            # ------------------------------------------------
+
             else:
+
                 available = balances[
                     deduction_type
                 ]["balance"]
@@ -407,7 +639,12 @@ def get_leave_distribution(
                     not is_unpaid,
             })
 
+            # ------------------------------------------------
+            # CONSUME PAID BALANCE
+            # ------------------------------------------------
+
             if not is_unpaid:
+
                 balances[
                     deduction_type
                 ]["balance"] -= deducted
@@ -417,11 +654,20 @@ def get_leave_distribution(
             if remaining <= 0:
                 break
 
+        # ----------------------------------------------------
+        # NO MORE SOURCES
+        # ----------------------------------------------------
+
         if remaining > 0:
+
             frappe.throw(
                 "Insufficient leave balance for "
                 f"{request['date'].strftime('%d-%m-%Y')}."
             )
+
+    # ========================================================
+    # GROUP RESULT
+    # ========================================================
 
     distribution = group_distribution(
         raw_distribution
@@ -434,10 +680,7 @@ def get_leave_distribution(
             distribution,
 
         "total_days":
-            sum(
-                row["days"]
-                for row in raw_distribution
-            ),
+            requested_total,
 
         "balances": {
             key:
@@ -447,6 +690,10 @@ def get_leave_distribution(
         },
     }
 
+
+# ============================================================
+# CREATE LEAVE APPLICATIONS
+# ============================================================
 
 @frappe.whitelist()
 def create_leave_applications(
@@ -459,16 +706,46 @@ def create_leave_applications(
     reason=None,
     leave_approver=None,
 ):
+
+    if not employee:
+        frappe.throw(
+            "Employee is required."
+        )
+
+    if not leave_type:
+        frappe.throw(
+            "Leave Type is required."
+        )
+
     if not reason or not reason.strip():
         frappe.throw(
             "Reason is required."
         )
 
-    validate_employee_leave_balance(
-        employee=employee,
-        leave_type=leave_type,
-        date=to_date,
-    )
+    # --------------------------------------------------------
+    # GET DISTRIBUTION
+    #
+    # IMPORTANT:
+    # Do NOT validate selected leave balance before this.
+    #
+    # If custom rule exists:
+    #
+    # Annual = 2
+    # Request = 10
+    #
+    # distribution can become:
+    #
+    # Annual = 2
+    # LWP    = 8
+    #
+    # If no custom rule exists:
+    #
+    # Annual = 2
+    # Request = 10
+    #
+    # get_leave_distribution()
+    # will reject it.
+    # --------------------------------------------------------
 
     result = get_leave_distribution(
         employee=employee,
@@ -485,18 +762,26 @@ def create_leave_applications(
     )
 
     if not distribution:
+
         frappe.throw(
             "No leave distribution found."
         )
 
     created = []
 
+    # ========================================================
+    # CREATE DRAFT LEAVE APPLICATIONS
+    # ========================================================
+
     for row in distribution:
+
         application = frappe.new_doc(
             "Leave Application"
         )
 
-        application.employee = employee
+        application.employee = (
+            employee
+        )
 
         application.leave_type = (
             row["leave_type"]
@@ -511,7 +796,7 @@ def create_leave_applications(
         )
 
         application.total_leave_days = (
-            row["days"]
+            flt(row["days"])
         )
 
         application.reason = (
@@ -519,17 +804,30 @@ def create_leave_applications(
         )
 
         if leave_approver:
+
             application.leave_approver = (
                 leave_approver
             )
 
-        if float(row["days"]) == 0.5:
+        # ----------------------------------------------------
+        # HALF DAY
+        # ----------------------------------------------------
+
+        if flt(row["days"]) == 0.5:
+
             application.half_day = 1
+
             application.half_day_date = (
                 row["from_date"]
             )
+
         else:
+
             application.half_day = 0
+
+        # ----------------------------------------------------
+        # DRAFT
+        # ----------------------------------------------------
 
         application.docstatus = 0
 

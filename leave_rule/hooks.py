@@ -274,9 +274,20 @@ fixtures = [
             [
                 "name", "in",
                 [
-                    "Leave_Type-custom_deduction_rules",
-                    "Leave_Type-custom_enable_deduction_rule",
-                    "Leave_Type-custom_leave_deduction_priority",
+                    "Leave Type-custom_deduction_rules",
+                    "Leave Type-custom_enable_deduction_rule",
+                    "Leave Type-custom_leave_deduction_priority",
+                ]
+            ]
+        ]
+    },
+    {
+        "dt": "Property Setter",
+        "filters": [
+            [
+                "name", "in",
+                [
+                    "Leave Type-main-field_order"
                 ]
             ]
         ]
