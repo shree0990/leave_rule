@@ -1,33 +1,46 @@
-### Leave Rule
+# Leave Rule for Frappe HRMS
 
-Configurable leave management and deduction automation for ERPNext.
+A custom Frappe/HRMS application that adds configurable leave deduction, balance-aware distribution, half-day support, and automatic draft leave application creation.
 
-### Installation
+---
 
-You can install this app using the [bench](https://github.com/frappe/bench) CLI:
+## Features
+
+* **Configurable Deduction Rules:** Set cascading priorities for how a leave type consumes balances from other leave types (e.g., Casual Leave $\rightarrow$ Annual Leave $\rightarrow$ Leave Without Pay).
+* **Date-Wise Distribution:** Automatically breaks down multi-day requests across specific dates and leave types.
+* **Smart Balance Validation:** Prevents selecting paid leave types with zero balance while allowing LWP (Leave Without Pay) fallback.
+* **Half-Day Support:** Accurate $0.5$-day deductions with customizable half-day dates within the range.
+* **Draft Automation:** Automatically generates standard HRMS **Leave Application** documents in **Draft** status based on the calculated distribution.
+* **Core Compatible:** Falls back seamlessly to standard HRMS behavior if no custom deduction rule is configured.
+
+---
+
+## Installation
+
+Execute these commands in your Frappe Bench directory:
 
 ```bash
-cd $PATH_TO_YOUR_BENCH
-bench get-app $URL_OF_THIS_REPO --branch master
-bench install-app leave_rule
+bench get-app leave_rule
+bench --site your-site install-app leave_rule
+bench --site your-site migrate
+bench --site your-site clear-cache
+bench restart
+
 ```
 
-### Contributing
+---
 
-This app uses `pre-commit` for code formatting and linting. Please [install pre-commit](https://pre-commit.com/#installation) and enable it for this repository:
+## Configuration
 
-```bash
-cd apps/leave_rule
-pre-commit install
-```
+1. Go to **Leave Type** in your ERPNext/HRMS desk.
+2. Enable **Custom Enable Deduction Rule**.
+3. Define your cascading sequence in the **Leave Deduction Priority** table:
+* **Sequence 1** must always start with the current leave type.
+* Subsequent sequences define the fallback leave types (ending with an LWP type if needed).
 
-Pre-commit is configured to use the following tools for checking and formatting your code:
 
-- ruff
-- eslint
-- prettier
-- pyupgrade
+---
 
-### License
+## License
 
-mit
+MIT

@@ -44,7 +44,11 @@ app_license = "mit"
 
 # include js in doctype views
 # doctype_js = {"doctype" : "public/js/doctype.js"}
+doctype_js = {"Leave Type" : "public/js/custom_leave_type.js"}
+
 # doctype_list_js = {"doctype" : "public/js/doctype_list.js"}
+doctype_list_js = {"Leave Application" : "public/js/custom_leave_application_list.js"}
+
 # doctype_tree_js = {"doctype" : "public/js/doctype_tree.js"}
 # doctype_calendar_js = {"doctype" : "public/js/doctype_calendar.js"}
 
@@ -145,6 +149,13 @@ app_license = "mit"
 # 		"on_trash": "method"
 # 	}
 # }
+
+doc_events = {
+    "Leave Type": {
+        "validate": "leave_rule.public.python.custom_leave_type.validate_leave_type",
+    }
+}
+
 
 # Scheduled Tasks
 # ---------------
@@ -256,3 +267,18 @@ app_license = "mit"
 # List of apps whose translatable strings should be excluded from this app's translations.
 # ignore_translatable_strings_from = []
 
+fixtures = [
+    {
+        "dt": "Custom Field",
+        "filters": [
+            [
+                "name", "in",
+                [
+                    "Leave_Type-custom_deduction_rules",
+                    "Leave_Type-custom_enable_deduction_rule",
+                    "Leave_Type-custom_leave_deduction_priority",
+                ]
+            ]
+        ]
+    }
+]
